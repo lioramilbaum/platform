@@ -1,0 +1,16 @@
+components:
+  - name: github.com/lmilbaum/platform
+    version: ${VERSION}
+    provider:
+      name: github.com/lmilbaum
+    labels:
+      - name: platform.lmilbaum.github.com/tier
+        value: platform
+    resources:
+      - name: kind-cluster
+        type: blob
+        version: ${VERSION}
+        input:
+          type: file
+          path: ./components/kind/cluster.yaml
+          mediaType: application/yaml
