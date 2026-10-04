@@ -100,7 +100,7 @@ test_sign_and_verify() {
   local tmp="$1"
   _build
   _sign
-  [[ -f "$BUILD_DIR/sign.ocmconfig" ]] || { echo "  sign.ocmconfig not created" >&2; return 1; }
+  [[ -f "$tmp/sign.ocmconfig" ]] || { echo "  sign.ocmconfig not created" >&2; return 1; }
   _verify
 }
 
