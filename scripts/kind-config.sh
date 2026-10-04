@@ -3,7 +3,7 @@ set -euo pipefail
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 
-require ocm
+require "$OCM"
 
 if [[ "${SKIP_VERIFY:-0}" != "1" ]]; then
   # shellcheck source=scripts/verify.sh

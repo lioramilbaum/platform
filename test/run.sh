@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+OCM="${OCM:-ocm}"
 PASS=0
 FAIL=0
 
@@ -71,15 +72,15 @@ test_build_produces_platform_tree() {
   local tmp="$1"
   _build
   local count
-  count=$("${OCM:-ocm}" get cv "ctf::${tmp}/ctf//github.com/lmilbaum/platform:${VERSION:-0.1.0}" \
+  count=$("$OCM" get cv "ctf::${tmp}/ctf//github.com/lmilbaum/platform:${VERSION:-0.1.0}" \
     --recursive -o json 2>/dev/null | jq 'length')
   assert_eq "$count" "1"
   local resource_names
-  resource_names=$("${OCM:-ocm}" get cv "ctf::${tmp}/ctf//github.com/lmilbaum/platform:${VERSION:-0.1.0}" \
+  resource_names=$("$OCM" get cv "ctf::${tmp}/ctf//github.com/lmilbaum/platform:${VERSION:-0.1.0}" \
     -o json 2>/dev/null | jq -r '.[0].component.resources[].name' | sort | paste -sd, -)
   assert_eq "$resource_names" "kind-cluster"
   local ref_count
-  ref_count=$("${OCM:-ocm}" get cv "ctf::${tmp}/ctf//github.com/lmilbaum/platform:${VERSION:-0.1.0}" \
+  ref_count=$("$OCM" get cv "ctf::${tmp}/ctf//github.com/lmilbaum/platform:${VERSION:-0.1.0}" \
     -o json 2>/dev/null | jq '.[0].component.componentReferences // [] | length')
   assert_eq "$ref_count" "0"
 }
@@ -88,7 +89,7 @@ test_platform_resources() {
   local tmp="$1"
   _build
   local resources
-  resources=$("${OCM:-ocm}" get cv "ctf::${tmp}/ctf//github.com/lmilbaum/platform:${VERSION:-0.1.0}" \
+  resources=$("$OCM" get cv "ctf::${tmp}/ctf//github.com/lmilbaum/platform:${VERSION:-0.1.0}" \
     -o json 2>/dev/null | jq -r '.[0].component.resources')
 
   local kind_cluster_type
@@ -140,7 +141,7 @@ test_version_is_propagated() {
   export VERSION=9.9.9
   _build
   local cv_out
-  cv_out=$("${OCM:-ocm}" get cv "ctf::${tmp}/ctf//github.com/lmilbaum/platform:9.9.9" \
+  cv_out=$("$OCM" get cv "ctf::${tmp}/ctf//github.com/lmilbaum/platform:9.9.9" \
     -o json 2>/dev/null)
   local component_version
   component_version=$(jq -r '.[0].component.version' <<< "$cv_out")

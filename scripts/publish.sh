@@ -3,7 +3,7 @@ set -euo pipefail
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 
-require ocm
+require "$OCM"
 
 [[ -n "${OCM_REPO:-}" ]] || die "OCM_REPO must be set (e.g. ghcr.io/lmilbaum/ocm)"
 
