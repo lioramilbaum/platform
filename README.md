@@ -46,6 +46,7 @@ make sign            # sign with an auto-generated dev RSA key
 make verify          # verify the signature
 make kind-config     # download the kind cluster config from the component
 make kind            # install the verified kind binary
+make package         # package signed CTF, public key and bootstrap.sh into build/release
 make e2e             # spin up kind cluster, verify it exists, tear down (requires build and sign)
 make publish OCM_REPO=ghcr.io/<you>/ocm  # transfer to an OCI registry
 ```
@@ -131,3 +132,71 @@ make test  # run the test suite
 CI runs on macOS 15 Apple Silicon (darwin/arm64). Lint and test run on every push and pull request. E2E tests require Docker and are currently not run in CI.
 
 Dev notes: The kind binary is platform-specific and currently only built for darwin/arm64. To support other platforms, add additional fetch and build targets.
+
+## Releases
+
+### One-time setup
+
+Generate a signing key and store it as a GitHub secret:
+
+```bash
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out private.pem
+gh secret set OCM_SIGNING_KEY -R lioramilbaum/platform < private.pem
+```
+
+### Cutting a release
+
+Push a tag matching `v*.*.*`:
+
+```bash
+git tag v0.2.0 && git push upstream v0.2.0
+```
+
+Tags with a pre-release suffix (e.g., `v0.2.0-rc.1`) are published as GitHub pre-releases.
+
+### Release assets
+
+Each release includes four assets:
+
+- **platform-ctf-{VERSION}.tar.gz**: Signed component CTF (verify before extracting)
+- **platform-signing-key.pub.pem**: Public signing key (for verification config)
+- **bootstrap.sh**: Zero-to-cluster deployment script
+- **SHA256SUMS**: SHA256 checksums for the above assets
+
+### Consuming a release
+
+#### Option 1: Verify and extract CTF locally
+
+```bash
+# Verify checksums
+shasum -a 256 -c SHA256SUMS
+
+# Extract archive
+tar -xzf platform-ctf-0.2.0.tar.gz
+
+# Create a verify config pointing at the downloaded public key
+cat > verify.ocmconfig <<EOF
+type: generic.config.ocm.software/v1
+configurations:
+  - type: credentials.config.ocm.software
+    consumers:
+      - identity:
+          type: RSA/v1alpha1
+          algorithm: RSASSA-PSS
+          signature: default
+        credentials:
+          - type: RSACredentials/v1
+            publicKeyPEMFile: $PWD/platform-signing-key.pub.pem
+EOF
+
+# Deploy with signature verification
+OCM_REPO=ctf://$PWD/ctf VERSION=0.2.0 VERIFY_CONFIG=$PWD/verify.ocmconfig bash bootstrap.sh
+```
+
+#### Option 2: Deploy directly from GitHub Container Registry
+
+```bash
+OCM_REPO=oci://ghcr.io/lioramilbaum/ocm VERSION=0.2.0 bash bootstrap.sh
+```
+
+Note: In this case, verification is implicit (you're trusting the registry and container image signature).

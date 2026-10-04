@@ -7,7 +7,7 @@ GOARCH         ?= $(subst aarch64,arm64,$(subst x86_64,amd64,$(GOARCH_RAW)))
 
 export VERSION OCM
 
-.PHONY: help tools build sign verify publish lint test kind-config kind e2e clean
+.PHONY: help tools build sign verify publish package lint test kind-config kind e2e clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -39,6 +39,9 @@ kind: build sign ## Install the verified kind binary into build/deploy/bin/kind
 
 publish: ## Transfer the CTF to an OCI registry (requires OCM_REPO=...)
 	@bash scripts/publish.sh
+
+package: ## Package signed CTF, public key and bootstrap.sh into build/release
+	@bash scripts/package.sh
 
 lint: ## Lint shell scripts (if shellcheck is available)
 	@if command -v shellcheck >/dev/null 2>&1; then \

@@ -353,7 +353,7 @@ test_script_resources_metadata() {
   assert_eq "$cdigest" "$cexpected" "component-constructor digest"
 
   # Verify build-time scripts are NOT in the component
-  for excl in build sign publish fetch-kind fetch-ocm keys e2e; do
+  for excl in build sign publish fetch-kind fetch-ocm keys e2e package; do
     local count
     count="$(echo "$cv_json" | jq -r --arg n "script-$excl" '[.[0].component.resources[] | select(.name==$n)] | length')"
     assert_eq "$count" "0" "script-$excl must be absent"
@@ -708,6 +708,84 @@ test_bootstrap_deploys_with_component_ocm() {
     die "bundle component-constructor.yaml differs from repo"
 }
 
+test_package_rejects_non_semver_version() {
+  [[ -f "$ROOT/scripts/package.sh" ]] || return 1
+  local out
+  out="$(VERSION=v0.1.0 bash "$ROOT/scripts/package.sh" 2>&1)" && return 1
+  assert_contains "$out" "semver"
+}
+
+test_package_rejects_unsigned_component() {
+  local tmp="$1"
+  [[ -f "$ROOT/scripts/package.sh" ]] || return 1
+  _build
+  bash "$ROOT/scripts/keys.sh"
+  assert_fails bash "$ROOT/scripts/package.sh"
+  [[ ! -d "$tmp/release" ]] || { echo "FAIL: release directory should not exist" >&2; return 1; }
+}
+
+test_package_rejects_mismatched_public_key() {
+  [[ -f "$ROOT/scripts/package.sh" ]] || return 1
+  _build
+  _sign
+  local alt
+  alt="$(mktemp -d)"
+  trap 'rm -rf "$alt"' RETURN
+  openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$alt/private.pem" 2>/dev/null
+  openssl rsa -in "$alt/private.pem" -pubout -out "$alt/public.pem" 2>/dev/null
+  VERIFY_KEY="$alt/public.pem" assert_fails bash "$ROOT/scripts/package.sh"
+}
+
+test_package_produces_verifiable_release() {
+  local tmp="$1"
+  [[ -f "$ROOT/scripts/package.sh" ]] || return 1
+  _build
+  _sign
+  local rel="$tmp/release"
+  RELEASE_DIR="$rel" bash "$ROOT/scripts/package.sh" >/dev/null
+
+  # All four assets exist
+  [[ -f "$rel/platform-ctf-${VERSION}.tar.gz" ]] || { echo "FAIL: platform-ctf tarball not found" >&2; return 1; }
+  [[ -f "$rel/platform-signing-key.pub.pem" ]] || { echo "FAIL: platform-signing-key.pub.pem not found" >&2; return 1; }
+  [[ -f "$rel/bootstrap.sh" ]] || { echo "FAIL: bootstrap.sh not found" >&2; return 1; }
+  [[ -f "$rel/SHA256SUMS" ]] || { echo "FAIL: SHA256SUMS not found" >&2; return 1; }
+
+  # SHA256SUMS has exactly 3 lines and each hash is correct
+  local lines
+  lines="$(wc -l < "$rel/SHA256SUMS" | tr -d ' ')"
+  [[ "$lines" -eq 3 ]] || { echo "FAIL: SHA256SUMS has $lines lines, expected 3" >&2; return 1; }
+  (cd "$rel" && shasum -a 256 -c SHA256SUMS >/dev/null)
+
+  # bootstrap.sh and public key match source files
+  cmp "$rel/bootstrap.sh" "$ROOT/scripts/bootstrap.sh"
+  cmp "$rel/platform-signing-key.pub.pem" "$tmp/keys/public.pem"
+
+  # Tarball extracts with ctf/ prefix
+  local extract="$tmp/extract"
+  mkdir -p "$extract"
+  tar -xzf "$rel/platform-ctf-${VERSION}.tar.gz" -C "$extract"
+  [[ -d "$extract/ctf" ]] || { echo "FAIL: extracted ctf directory not found" >&2; return 1; }
+
+  # Extracted CTF verifies with the published key
+  local vcfg="$tmp/pkg-verify.ocmconfig"
+  cat > "$vcfg" <<EOF
+type: generic.config.ocm.software/v1
+configurations:
+  - type: credentials.config.ocm.software
+    consumers:
+      - identity:
+          type: RSA/v1alpha1
+          algorithm: RSASSA-PSS
+          signature: default
+        credentials:
+          - type: RSACredentials/v1
+            publicKeyPEMFile: ${rel}/platform-signing-key.pub.pem
+EOF
+  "$OCM" verify cv --config "$vcfg" "ctf::$extract/ctf//${ROOT_COMPONENT}:${VERSION}"
+  "$OCM" get cv "ctf::$extract/ctf//${ROOT_COMPONENT}:${VERSION}" -o json \
+    | jq -r '.[0].component.version' | grep -qx "$VERSION"
+}
+
 # ── Run all tests ─────────────────────────────────────────────────────────────
 
 run_test "build produces platform tree" test_build_produces_platform_tree
@@ -734,6 +812,10 @@ run_test "ocm version pins consistent" test_ocm_version_pins_consistent
 run_test "bootstrap rejects bad ocm checksum" test_bootstrap_rejects_bad_ocm_checksum
 run_test "bootstrap rejects wrong key" test_bootstrap_rejects_wrong_key
 run_test "bootstrap deploys with component ocm" test_bootstrap_deploys_with_component_ocm
+run_test "package rejects non-semver version" test_package_rejects_non_semver_version
+run_test "package rejects unsigned component" test_package_rejects_unsigned_component
+run_test "package rejects mismatched public key" test_package_rejects_mismatched_public_key
+run_test "package produces verifiable release" test_package_produces_verifiable_release
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
