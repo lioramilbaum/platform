@@ -3,7 +3,7 @@ set -euo pipefail
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 
-require ocm
+require "$OCM"
 
 VERIFY_CONFIG="${VERIFY_CONFIG:-$BUILD_DIR/verify.ocmconfig}"
 [[ -f "$VERIFY_CONFIG" ]] || die "Verify config not found: $VERIFY_CONFIG (run build and sign first)"
