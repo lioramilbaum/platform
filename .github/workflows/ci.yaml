@@ -8,12 +8,16 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install dependencies
-        run: sudo apt-get install -y jq
-      - name: Install OCM CLI
+      - name: Platform
+        run: uname -sm
+      - name: Install shellcheck
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+        run: brew install shellcheck
+      - name: Install tools
         run: make tools
       - name: Lint
         run: make lint OCM=bin/ocm
