@@ -1,10 +1,10 @@
 components:
-  - name: github.com/lmilbaum/platform
+  - name: github.com/lioramilbaum/platform
     version: ${VERSION}
     provider:
-      name: github.com/lmilbaum
+      name: github.com/lioramilbaum
     labels:
-      - name: platform.lmilbaum.github.com/tier
+      - name: platform.lioramilbaum.github.com/tier
         value: platform
     resources:
       - name: kind
@@ -13,7 +13,7 @@ components:
         labels:
           # When Renovate bumps the kind version, also update the sha256sum label
           # below to match the new release. The input.path is derived automatically.
-          - name: kind.lmilbaum.github.com/sha256sum-darwin-arm64
+          - name: kind.lioramilbaum.github.com/sha256sum-darwin-arm64
             value: "0c8c7dbe5e23594a198b786c4bc13dacc101fa6196b0cb0b23a1ca44e61f4b4f"
         extraIdentity:
           os: darwin
@@ -22,6 +22,21 @@ components:
           type: file
           path: ./bin/dist/kind-${KIND_VERSION}-darwin-arm64
           mediaType: application/octet-stream
+      - name: ocm
+        type: executable
+        version: v0.17.0
+        labels:
+          # When Renovate bumps the OCM CLI version, also update the sha256sum label below
+          # AND OCM_BOOTSTRAP_SHA256_DARWIN_ARM64 in scripts/bootstrap.sh (enforced by test).
+          - name: ocm.lioramilbaum.github.com/sha256sum-darwin-arm64
+            value: "ae87ac4943e81396054367315395787fb7b71a697d946f8bb62de67bcb93e544"
+        extraIdentity:
+          os: darwin
+          architecture: arm64
+        input:
+          type: file
+          path: ./bin/dist/ocm-${OCM_CLI_VERSION}-darwin-arm64
+          mediaType: application/octet-stream
       - name: kind-cluster
         type: blob
         version: ${VERSION}
@@ -29,3 +44,56 @@ components:
           type: file
           path: ./components/kind/cluster.yaml
           mediaType: application/yaml
+      # Deploy-time bundle: consumers download these to <bundle>/scripts/*.sh
+      # and <bundle>/component-constructor.yaml, then run deploy.sh or bootstrap.sh.
+      # Build-time scripts (build.sh, sign.sh, publish.sh, fetch-kind.sh, fetch-ocm.sh) and test harness (e2e.sh) are excluded.
+      # script-bootstrap is the signed reference copy of the consumer entrypoint for zero-to-cluster bootstrapping.
+      - name: component-constructor
+        type: blob
+        version: ${VERSION}
+        input:
+          type: file
+          path: ./component-constructor.yaml
+          mediaType: application/yaml
+      - name: script-lib
+        type: blob
+        version: ${VERSION}
+        input:
+          type: file
+          path: ./scripts/lib.sh
+          mediaType: text/x-shellscript
+      - name: script-verify
+        type: blob
+        version: ${VERSION}
+        input:
+          type: file
+          path: ./scripts/verify.sh
+          mediaType: text/x-shellscript
+      - name: script-kind-config
+        type: blob
+        version: ${VERSION}
+        input:
+          type: file
+          path: ./scripts/kind-config.sh
+          mediaType: text/x-shellscript
+      - name: script-kind-bin
+        type: blob
+        version: ${VERSION}
+        input:
+          type: file
+          path: ./scripts/kind-bin.sh
+          mediaType: text/x-shellscript
+      - name: script-deploy
+        type: blob
+        version: ${VERSION}
+        input:
+          type: file
+          path: ./scripts/deploy.sh
+          mediaType: text/x-shellscript
+      - name: script-bootstrap
+        type: blob
+        version: ${VERSION}
+        input:
+          type: file
+          path: ./scripts/bootstrap.sh
+          mediaType: text/x-shellscript

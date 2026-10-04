@@ -7,14 +7,20 @@ export OCM="${OCM:-ocm}"
 export VERSION="${VERSION:-0.1.0}"
 export BUILD_DIR="${BUILD_DIR:-$ROOT/build}"
 export CTF="${CTF:-$BUILD_DIR/ctf}"
-export ROOT_COMPONENT="github.com/lmilbaum/platform"
+export ROOT_COMPONENT="github.com/lioramilbaum/platform"
 
 export KIND_VERSION="${KIND_VERSION:-$(awk '/name: kind$/{f=1} f && /version:/{gsub(/.*: /, ""); print; exit}' "$ROOT/component-constructor.yaml")}"
-export KIND_SHA256_DARWIN_ARM64="${KIND_SHA256_DARWIN_ARM64:-$(awk '/kind\.lmilbaum\.github\.com\/sha256sum-darwin-arm64/{getline; gsub(/.*value: "|"/, ""); print; exit}' "$ROOT/component-constructor.yaml")}"
+export KIND_SHA256_DARWIN_ARM64="${KIND_SHA256_DARWIN_ARM64:-$(awk '/kind\.lioramilbaum\.github\.com\/sha256sum-darwin-arm64/{getline; gsub(/.*value: "|"/, ""); print; exit}' "$ROOT/component-constructor.yaml")}"
 export KIND_BASE_URL="${KIND_BASE_URL:-https://github.com/kubernetes-sigs/kind/releases/download}"
 export KIND_DIST_DIR="${KIND_DIST_DIR:-$ROOT/bin/dist}"
 export KIND_DIST_FILE="kind-${KIND_VERSION}-darwin-arm64"
 export KIND_BIN="${KIND_BIN:-$BUILD_DIR/deploy/bin/kind}"
+
+export OCM_CLI_VERSION="${OCM_CLI_VERSION:-$(awk '/name: ocm$/{f=1} f && /version:/{gsub(/.*: /, ""); print; exit}' "$ROOT/component-constructor.yaml")}"
+export OCM_CLI_SHA256_DARWIN_ARM64="${OCM_CLI_SHA256_DARWIN_ARM64:-$(awk '/ocm\.lioramilbaum\.github\.com\/sha256sum-darwin-arm64/{getline; gsub(/.*value: "|"/, ""); print; exit}' "$ROOT/component-constructor.yaml")}"
+export OCM_CLI_BASE_URL="${OCM_CLI_BASE_URL:-https://github.com/open-component-model/open-component-model/releases/download}"
+export OCM_CLI_DIST_DIR="${OCM_CLI_DIST_DIR:-$ROOT/bin/dist}"
+export OCM_CLI_DIST_FILE="ocm-${OCM_CLI_VERSION}-darwin-arm64"
 
 host_os() {
   uname -s | tr '[:upper:]' '[:lower:]'

@@ -5,13 +5,19 @@ source "$(dirname "$0")/lib.sh"
 
 require "$OCM"
 
-# OCM file inputs are confined to the constructor directory; KIND_DIST_DIR must be inside ROOT.
+# OCM file inputs are confined to the constructor directory; KIND_DIST_DIR and OCM_CLI_DIST_DIR must be inside ROOT.
 case "$(cd "$KIND_DIST_DIR" 2>/dev/null && pwd || echo "$KIND_DIST_DIR")" in
   "$ROOT"/*)  ;;
   *)          die "KIND_DIST_DIR must be inside \$ROOT ($KIND_DIST_DIR is not under $ROOT)" ;;
 esac
 
+case "$(cd "$OCM_CLI_DIST_DIR" 2>/dev/null && pwd || echo "$OCM_CLI_DIST_DIR")" in
+  "$ROOT"/*)  ;;
+  *)          die "OCM_CLI_DIST_DIR must be inside \$ROOT ($OCM_CLI_DIST_DIR is not under $ROOT)" ;;
+esac
+
 bash "$(dirname "$0")/fetch-kind.sh"
+bash "$(dirname "$0")/fetch-ocm.sh"
 
 mkdir -p "$BUILD_DIR"
 rm -rf "$CTF"

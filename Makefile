@@ -1,6 +1,6 @@
 VERSION        ?= 0.1.0
 OCM            ?= $(shell command -v ocm 2>/dev/null || echo bin/ocm)
-OCM_CLI_VERSION ?= v0.17.0
+OCM_CLI_VERSION ?= $(shell awk '/name: ocm$$/{f=1} f && /version:/{gsub(/.*: /, ""); print; exit}' component-constructor.yaml)
 GOOS           ?= $(shell uname -s | tr '[:upper:]' '[:lower:]')
 GOARCH_RAW     := $(shell uname -m)
 GOARCH         ?= $(subst aarch64,arm64,$(subst x86_64,amd64,$(GOARCH_RAW)))
@@ -20,6 +20,7 @@ tools: ## Download the OCM CLI into bin/ocm and fetch kind binary
 		-o bin/ocm
 	chmod +x bin/ocm
 	@bash scripts/fetch-kind.sh
+	@bash scripts/fetch-ocm.sh
 
 build: ## Build the OCM component archive (CTF)
 	@bash scripts/build.sh
