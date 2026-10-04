@@ -7,6 +7,21 @@ components:
       - name: platform.lmilbaum.github.com/tier
         value: platform
     resources:
+      - name: kind
+        type: executable
+        version: v0.33.0
+        labels:
+          # When Renovate bumps the kind version, also update the sha256sum label
+          # below to match the new release. The input.path is derived automatically.
+          - name: kind.lmilbaum.github.com/sha256sum-darwin-arm64
+            value: "0c8c7dbe5e23594a198b786c4bc13dacc101fa6196b0cb0b23a1ca44e61f4b4f"
+        extraIdentity:
+          os: darwin
+          architecture: arm64
+        input:
+          type: file
+          path: ./bin/dist/kind-${KIND_VERSION}-darwin-arm64
+          mediaType: application/octet-stream
       - name: kind-cluster
         type: blob
         version: ${VERSION}

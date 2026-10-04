@@ -7,18 +7,19 @@ GOARCH         ?= $(subst aarch64,arm64,$(subst x86_64,amd64,$(GOARCH_RAW)))
 
 export VERSION OCM
 
-.PHONY: help tools build sign verify publish lint test kind-config e2e clean
+.PHONY: help tools build sign verify publish lint test kind-config kind e2e clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
 
-tools: ## Download the OCM CLI into bin/ocm
+tools: ## Download the OCM CLI into bin/ocm and fetch kind binary
 	@mkdir -p bin
 	curl -sSfL \
 		"https://github.com/open-component-model/open-component-model/releases/download/$(OCM_CLI_VERSION)/ocm-$(GOOS)-$(GOARCH)" \
 		-o bin/ocm
 	chmod +x bin/ocm
+	@bash scripts/fetch-kind.sh
 
 build: ## Build the OCM component archive (CTF)
 	@bash scripts/build.sh
@@ -31,6 +32,9 @@ verify: ## Verify signatures on the component archive
 
 kind-config: ## Download the kind cluster config from the OCM component
 	@bash scripts/kind-config.sh
+
+kind: build sign ## Install the verified kind binary into build/deploy/bin/kind
+	@bash scripts/kind-bin.sh
 
 publish: ## Transfer the CTF to an OCI registry (requires OCM_REPO=...)
 	@bash scripts/publish.sh
@@ -45,18 +49,8 @@ lint: ## Lint shell scripts (if shellcheck is available)
 test: ## Run the test suite
 	@bash test/run.sh
 
-e2e: ## End-to-end test using kind (requires docker)
-	@bash scripts/kind-config.sh
-	@KIND_CLUSTER=$$(grep '^name:' build/deploy/kind-cluster.yaml | awk '{print $$2}'); \
-	if ! kind get clusters 2>/dev/null | grep -qx "$$KIND_CLUSTER"; then \
-		kind create cluster --config build/deploy/kind-cluster.yaml; \
-	fi; \
-	kind get nodes --name "$$KIND_CLUSTER" 2>/dev/null | grep -q control-plane
-	# kind >= 0.12 respects the name: field in the cluster config
-	@if [ "$${KEEP_CLUSTER:-0}" != "1" ]; then \
-		KIND_CLUSTER=$$(grep '^name:' build/deploy/kind-cluster.yaml | awk '{print $$2}'); \
-		kind delete cluster --name "$$KIND_CLUSTER"; \
-	fi
+e2e: build sign ## End-to-end test using kind (requires docker)
+	@bash scripts/e2e.sh
 
 clean: ## Remove build artifacts
 	rm -rf build bin

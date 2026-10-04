@@ -12,6 +12,9 @@ fi
 
 mkdir -p "$BUILD_DIR/deploy"
 
+# ocm v0.17 appends to an existing output file instead of truncating it.
+rm -f "$BUILD_DIR/deploy/kind-cluster.yaml"
+
 "$OCM" download resource \
   "$(cv_ref "$ROOT_COMPONENT")" \
   --identity name=kind-cluster \

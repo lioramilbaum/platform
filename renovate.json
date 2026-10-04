@@ -2,5 +2,25 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended"
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "fileMatch": ["^Makefile$"],
+      "matchStrings": [
+        "OCM_CLI_VERSION \\?= (?<currentValue>v[0-9.]+)"
+      ],
+      "depNameTemplate": "open-component-model/open-component-model",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["^component-constructor\\.yaml$"],
+      "matchStrings": [
+        "name: kind\\n\\s+type: executable\\n\\s+version: (?<currentValue>v[0-9.]+)"
+      ],
+      "depNameTemplate": "kubernetes-sigs/kind",
+      "datasourceTemplate": "github-releases"
+    }
   ]
 }
