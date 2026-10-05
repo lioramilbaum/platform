@@ -52,7 +52,7 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}" make build sign package OCM=bin/ocm
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
