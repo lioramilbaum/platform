@@ -13,12 +13,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
+  test:
     if: github.repository == 'lioramilbaum/platform'
     runs-on: macos-26
-    permissions:
-      contents: write
-      packages: write
     env:
       HOMEBREW_NO_AUTO_UPDATE: 1
     steps:
@@ -32,6 +29,18 @@ jobs:
 
       - name: Test
         run: make test OCM=bin/ocm
+
+  release:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install tools
+        run: make tools
 
       - name: Import signing key
         env:
