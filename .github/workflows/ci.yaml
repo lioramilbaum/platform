@@ -8,15 +8,22 @@ on:
 
 jobs:
   test:
-    runs-on: macos-26
+    strategy:
+      matrix:
+        runner: [macos-26, ubuntu-26.04-arm]
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Platform
         run: uname -sm
-      - name: Install shellcheck
+      - name: Install shellcheck (macOS)
+        if: runner.os == 'macOS'
         env:
           HOMEBREW_NO_AUTO_UPDATE: "1"
         run: brew install shellcheck
+      - name: Install shellcheck (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
       - name: Install tools
         run: make tools
       - name: Lint

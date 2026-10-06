@@ -1,202 +1,83 @@
 # platform
 
-A minimal but complete platform built with the [Open Component Model](https://ocm.software) (OCM v2).
+A minimal platform packaged and signed with the [Open Component Model](https://ocm.software). The component contains kind and OCM binaries, a kind node image archive, cluster configuration, and deployment scripts. Supported executable platforms are Darwin ARM64 and Linux ARM64. Offline release delivery targets Linux ARM64.
 
-## Component tree
+## Developer lifecycle
 
-```
-github.com/lioramilbaum/platform
-├── kind  (executable, darwin/arm64, kind v0.33.0 binary)
-├── ocm  (executable, darwin/arm64, OCM CLI binary)
-├── kind-cluster  (blob, application/yaml, kind cluster config)
-├── component-constructor  (blob, application/yaml, OCM component descriptor)
-├── script-lib  (blob, text/x-shellscript, shared script functions)
-├── script-verify  (blob, text/x-shellscript, signature verification)
-├── script-kind-config  (blob, text/x-shellscript, generate kind cluster config)
-├── script-kind-bin  (blob, text/x-shellscript, extract and verify kind binary)
-├── script-deploy  (blob, text/x-shellscript, deploy kind cluster)
-└── script-bootstrap  (blob, text/x-shellscript, consumer entrypoint reference copy)
-```
-
-## How it works
-
-A single OCM component with 10 direct resources (no component references):
-- **kind**: kind binary (darwin/arm64 only)
-- **ocm**: OCM CLI binary (darwin/arm64 only)
-- **kind-cluster**: kind cluster configuration
-- **component-constructor**: OCM component descriptor (for bundled deployments)
-- **script-lib, script-verify, script-kind-config, script-kind-bin, script-deploy, script-bootstrap**: deployment and bootstrap scripts
-
-`make kind-config` downloads the kind cluster config from the verified component. `make kind` installs the verified kind binary. `make e2e` calls `deploy.sh` to create the cluster, verifies it is healthy, then tears it down. Consumers can also download the full deployment bundle for self-contained execution.
-
-## Prerequisites
-
-- OCM CLI v2 ≥ 0.17.0 (`make tools` downloads it into `bin/`)
-- `jq`
-- `openssl`
-- `curl` (for fetching kind binary)
-- `docker` (for `make e2e` only; requires macOS 15 Apple Silicon/darwin-arm64)
-
-## Lifecycle
+Install Bash, curl, jq, OpenSSL, tar, a SHA256 utility, and Docker. Docker must support Linux ARM64 containers. ShellCheck is recommended.
 
 ```bash
-make tools           # download OCM CLI and fetch kind binary
-make build           # build the CTF archive in build/ctf
-make sign            # sign with an auto-generated dev RSA key
-make verify          # verify the signature
-make kind-config     # download the kind cluster config from the component
-make kind            # install the verified kind binary
-make package         # package signed CTF, public key and bootstrap.sh into build/release
-make e2e             # spin up kind cluster, verify it exists, tear down (requires build and sign)
-make publish OCM_REPO=ghcr.io/<you>/ocm  # transfer to an OCI registry
+make tools                          # fetch pinned OCM and kind binaries
+make fetch-image                    # connected: pull pinned kind node image and save it
+make build sign verify OCM=bin/ocm   # build local CTF, sign, verify
+make package OCM=bin/ocm             # transport to fresh CTF and create release assets
+make e2e OCM=bin/ocm                 # deploy, require readiness, tear down
+make publish OCM=bin/ocm OCM_REPO=oci://ghcr.io/<you>/ocm
+make lint test OCM=bin/ocm
 ```
 
-## Consuming the component
-
-A consumer who has pulled the component into a local CTF can download the full
-deployment bundle:
-
-```sh
-REF="ctf::./build/ctf//github.com/lioramilbaum/platform:0.1.0"
-
-# Verify the component signature before downloading anything
-OCM verify cv --config /path/to/verify.ocmconfig "$REF"
-
-# Download scripts and constructor into a bundle directory
-mkdir -p bundle/scripts
-for s in lib verify kind-config kind-bin deploy; do
-  rm -f "bundle/scripts/$s.sh"
-  ocm download resource "$REF" --identity name=script-$s \
-    --output bundle/scripts/$s.sh
-done
-rm -f bundle/component-constructor.yaml
-ocm download resource "$REF" --identity name=component-constructor \
-  --output bundle/component-constructor.yaml
-```
-
-Notes:
-- Downloaded files are mode 0600. Run them with `bash`, not `./`.
-- OCM 0.17 appends to an existing `--output` file. Always download into a clean directory.
-- Set `CTF`, `BUILD_DIR`, and `VERIFY_CONFIG` to match your layout, then run:
-  `CTF=./build/ctf BUILD_DIR=/tmp/deploy VERIFY_CONFIG=/path/to/verify.ocmconfig bash bundle/scripts/deploy.sh`
-- `deploy.sh` creates the cluster but does not tear it down. The cluster stays running so you can interact with it using kubeconfig context `kind-ocm-platform`. To delete: `build/deploy/bin/kind delete cluster --name ocm-platform`
-
-## Bootstrapping from nothing
-
-For zero-to-cluster deployment, use the standalone `bootstrap.sh` script from the component bundle:
-
-```sh
-OCM_REPO=ghcr.io/lioramilbaum/ocm \
-VERIFY_CONFIG=/path/to/verify.ocmconfig \
-bash bootstrap.sh
-```
-
-`bootstrap.sh` is a standalone entrypoint (no dependencies beyond curl, jq, openssl, and docker) that:
-1. Downloads bootstrap OCM binary (pinned in the script)
-2. Pulls the signed component from `OCM_REPO`
-3. Verifies the component signature
-4. Extracts all resources (kind binary, OCM binary, and scripts) with digest verification
-5. Hands off to `deploy.sh` to create the cluster
-
-Optional environment variables:
-- `BUILD_DIR`: Build directory (default: `$PWD/build`)
-- `VERSION`: Component version (default: `0.1.0`)
-- `OCM_BOOTSTRAP_BASE_URL`: Bootstrap OCM download URL (default: GitHub releases; use `file://` for offline testing)
-
-Note: `bootstrap.sh` only supports darwin/arm64. For other platforms, use the standard `make build` and `deploy.sh` workflow with pre-downloaded binaries.
-
-## Real signing keys
-
-Dev keys are generated once into `build/keys/` and are gitignored. For production:
+Local signing creates development RSA keys under `build/keys/`. Production signing uses explicitly supplied files:
 
 ```bash
-SIGNING_KEY=/path/to/private.pem VERIFY_KEY=/path/to/public.pem make sign verify
+SIGNING_KEY=/path/to/private.pem VERIFY_KEY=/path/to/public.pem make sign verify package OCM=bin/ocm
 ```
 
-## Version management
+Explicitly supplied missing key files fail. Never include the private key in a delivery package.
 
-When Renovate bumps the OCM CLI version, the sha256 must be updated in two places:
-- `component-constructor.yaml`: the `ocm.lioramilbaum.github.com/sha256sum-darwin-arm64` label
-- `scripts/bootstrap.sh`: the `OCM_BOOTSTRAP_SHA256_DARWIN_ARM64` constant
+## Release workflow
 
-The Makefile and `lib.sh` automatically derive the version from the constructor, so no other manual updates are needed.
+`.github/workflows/release.yaml` is the connected **Release** workflow. It runs automatically for `v*.*.*` tags and can be dispatched from `main` with a component version such as `0.2.0`. The canonical repository is `lioramilbaum/platform`.
 
-## Running tests
+Release tests on macOS, then uses a Linux ARM64 runner to fetch pinned binaries and the pinned kind node image, build and sign the CTF, transport the component into a fresh self-contained CTF, verify it, and publish the `platform-airgap-linux-arm64` Actions artifact. Tag runs also publish the component to GHCR and create a GitHub release, including prereleases for prerelease tags. Manual runs produce the Actions artifact without creating a tag release.
 
-```bash
-make test  # run the test suite
-```
-
-## CI
-
-CI runs on macOS 15 Apple Silicon (darwin/arm64). Lint and test run on every push and pull request. E2E tests require Docker and are currently not run in CI.
-
-Dev notes: The kind binary is platform-specific and currently only built for darwin/arm64. To support other platforms, add additional fetch and build targets.
-
-## Releases
-
-### One-time setup
-
-Generate a signing key and store it as a GitHub secret:
+Provision the private signing key as the `OCM_SIGNING_KEY` repository secret:
 
 ```bash
 openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out private.pem
+openssl pkey -in private.pem -pubout -out public.pem
 gh secret set OCM_SIGNING_KEY -R lioramilbaum/platform < private.pem
 ```
 
-### Cutting a release
+Release assets include `platform-airgap-{VERSION}-linux-arm64.tar.gz`, the legacy CTF archive, bootstrap entrypoint, informational public key, metadata, and checksums. The offline archive contains the transported signed CTF, including the saved Docker node image, and the bootstrap executable and entrypoint needed to verify and consume it. Metadata records component version, source revision, OS, architecture, and root component. Checksums catch accidental corruption; the independently trusted public key establishes signature trust.
 
-Push a tag matching `v*.*.*`:
+Actions artifacts expire after 30 days; tagged GitHub release assets provide a durable handoff.
 
-```bash
-git tag v0.2.0 && git push upstream v0.2.0
-```
+## Offline package consumption
 
-Tags with a pre-release suffix (e.g., `v0.2.0-rc.1`) are published as GitHub pre-releases.
+Provision the trusted public key independently of the downloaded archive, for example through runner configuration or an approved administrative transfer. A public key supplied alongside a package is informational and must not establish its own trust.
 
-### Release assets
+The offline machine needs Linux ARM64, Bash, Python 3.9 or newer, Docker with a running daemon, jq, OpenSSL, tar, a SHA256 utility, and standard system utilities. It does not need a separately installed OCM, kind, or kubectl binary. The package contains OCM and kind; readiness checks use kubectl inside the kind node.
 
-Each release includes four assets:
-
-- **platform-ctf-{VERSION}.tar.gz**: Signed component CTF (verify before extracting)
-- **platform-signing-key.pub.pem**: Public signing key (for verification config)
-- **bootstrap.sh**: Zero-to-cluster deployment script
-- **SHA256SUMS**: SHA256 checksums for the above assets
-
-### Consuming a release
-
-#### Option 1: Verify and extract CTF locally
+Transfer the offline archive through your approved internal mechanism or removable media, then run:
 
 ```bash
-# Verify checksums
-shasum -a 256 -c SHA256SUMS
-
-# Extract archive
-tar -xzf platform-ctf-0.2.0.tar.gz
-
-# Create a verify config pointing at the downloaded public key
-cat > verify.ocmconfig <<EOF
-type: generic.config.ocm.software/v1
-configurations:
-  - type: credentials.config.ocm.software
-    consumers:
-      - identity:
-          type: RSA/v1alpha1
-          algorithm: RSASSA-PSS
-          signature: default
-        credentials:
-          - type: RSACredentials/v1
-            publicKeyPEMFile: $PWD/platform-signing-key.pub.pem
-EOF
-
-# Deploy with signature verification
-OCM_REPO=ctf://$PWD/ctf VERSION=0.2.0 VERIFY_CONFIG=$PWD/verify.ocmconfig bash bootstrap.sh
+bash scripts/offline-run.sh \
+  /delivery/platform-airgap-0.2.0-linux-arm64.tar.gz \
+  /etc/platform/trusted-public.pem
 ```
 
-#### Option 2: Deploy directly from GitHub Container Registry
+Use the trusted entrypoint from the corresponding source revision; do not execute an unverified replacement supplied by an untrusted party. The package includes the entrypoint for transferring a complete delivery. `make deploy-offline PACKAGE=/delivery/platform-airgap-0.2.0-linux-arm64.tar.gz VERIFY_KEY=/etc/platform/trusted-public.pem` is the repository convenience target; `make e2e-airgap` consumes the same inputs for deployment testing.
+
+Offline consumption verifies the component and resources before deployment, loads the bundled node image into Docker, and creates the cluster using its saved runtime tag. Missing dependencies or package resources fail rather than trigger a download. Deployment requires node readiness and healthy Kubernetes system deployments. Optional `EXPECTED_SOURCE_REVISION` and `EXPECTED_VERSION` enforce the expected package identity; `BUILD_DIR` selects the staging directory.
+
+The node image is baked into the signed CTF. No registry connection is needed to obtain it during deployment. Registry publication remains a separate connected operation.
+
+## Air-gapped Deploy workflow
+
+`.github/workflows/air-gapped-deploy.yaml` is independent of Release. Dispatch it from `main` with `package_run_id`, the numeric ID of an already successful Release run. Configure the independently provisioned public key as the `OCM_VERIFY_KEY` secret:
 
 ```bash
-OCM_REPO=oci://ghcr.io/lioramilbaum/ocm VERSION=0.2.0 bash bootstrap.sh
+gh secret set OCM_VERIFY_KEY -R lioramilbaum/platform < public.pem
 ```
 
-Note: In this case, verification is implicit (you're trusting the registry and container image signature).
+The workflow checks the selected run belongs to the canonical repository and expected Release workflow, completed successfully, and originated from `main` or a release tag. It checks out the immutable source revision, downloads that exact run's named artifact, checks Linux ARM64 metadata, and invokes the offline entrypoint with the expected source revision and version.
+
+Isolation follows [krops' air-gapped workflow](https://github.com/polarsquad/krops/blob/main/.github/workflows/air-gapped.yml): checkout, artifact download, and capture-tool installation happen before isolation. A `DOCKER-USER` firewall rule blocks new forwarded connections leaving the kind bridge. Packet capture detects attempted public traffic on that bridge. Any such attempt fails the deployment test. Logs, readiness diagnostics, and traffic evidence are uploaded, and the cluster and firewall rule are cleaned up on failure as well as success.
+
+The GitHub runner and host Docker daemon retain connectivity. This workflow demonstrates cluster network isolation and package consumption; bridge traffic evidence does not establish isolation of host processes. A physically disconnected machine uses the local entrypoint and an external package handoff instead of downloading GitHub artifacts.
+
+## CI and pin maintenance
+
+CI runs lint and the unit suite on macOS ARM64 and Linux ARM64. The separate Air-gapped Deploy workflow exercises the real saved image, Docker deployment, and readiness checks.
+
+Binary versions and per-platform checksums are recorded in `component-constructor.yaml`; OCM checksum constants in both `scripts/bootstrap.sh` and `scripts/offline-run.sh` must remain consistent with those pins. The kind-compatible node image is pinned by digest, then saved under a stable runtime tag because Docker image loading does not reliably restore registry digests. Update the constructor image pin and cluster runtime image together when upgrading kind or Kubernetes.

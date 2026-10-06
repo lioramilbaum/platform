@@ -4,6 +4,14 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=scripts/lib.sh
 source "$ROOT/scripts/lib.sh"
+# Unit fixtures exercise signed resource transport without pulling a multi-GB image.
+# The isolated workflow tests the real digest-pinned Docker image.
+fixture_dir="$(mktemp -d "$ROOT/bin/dist/.test-image.XXXXXX")"
+trap 'rm -rf "$fixture_dir"' EXIT
+printf '[{"Config":"config.json","RepoTags":["kindest/node:v1.37.0"],"Layers":[]}]' > "$fixture_dir/manifest.json"
+printf '{"os":"linux","architecture":"arm64"}' > "$fixture_dir/config.json"
+tar -cf "$fixture_dir/image.tar" -C "$fixture_dir" manifest.json config.json
+export KIND_IMAGE_ARCHIVE="$fixture_dir/image.tar"
 PASS=0
 FAIL=0
 
@@ -12,7 +20,7 @@ run_test() {
   local tmp
   tmp=$(mktemp -d)
   # shellcheck disable=SC2064
-  trap "rm -rf '$tmp'" EXIT
+  trap "rm -rf '$tmp' '$fixture_dir'" EXIT
   # shellcheck disable=SC2030
   if (set -euo pipefail; export BUILD_DIR="$tmp" CTF="$tmp/ctf"; "$2" "$tmp"); then
     echo "PASS: $name"
@@ -21,7 +29,7 @@ run_test() {
     echo "FAIL: $name"
     FAIL=$((FAIL + 1))
   fi
-  trap - EXIT
+  trap 'rm -rf "$fixture_dir"' EXIT
   rm -rf "$tmp"
 }
 
@@ -119,7 +127,7 @@ test_build_produces_platform_tree() {
   local resource_names
   resource_names=$("$OCM" get cv "ctf::${tmp}/ctf//github.com/lioramilbaum/platform:${VERSION:-0.1.0}" \
     -o json 2>/dev/null | jq -r '.[0].component.resources[].name' | sort | paste -sd, -)
-  assert_eq "$resource_names" "component-constructor,kind,kind-cluster,ocm,script-bootstrap,script-deploy,script-kind-bin,script-kind-config,script-lib,script-verify"
+  assert_eq "$resource_names" "component-constructor,kind,kind-cluster,kind-node-image,ocm,script-bootstrap,script-deploy,script-kind-bin,script-kind-config,script-lib,script-verify"
   local ref_count
   ref_count=$("$OCM" get cv "ctf::${tmp}/ctf//github.com/lioramilbaum/platform:${VERSION:-0.1.0}" \
     -o json 2>/dev/null | jq '.[0].component.componentReferences // [] | length')
@@ -143,7 +151,7 @@ test_platform_resources() {
 
   local kind_os
   kind_os=$(jq -r '.[] | select(.name=="kind") | .extraIdentity.os' <<< "$resources")
-  assert_eq "$kind_os" "darwin"
+  assert_eq "$kind_os" "$PLATFORM_OS"
 
   local kind_arch
   kind_arch=$(jq -r '.[] | select(.name=="kind") | .extraIdentity.architecture' <<< "$resources")
@@ -155,7 +163,7 @@ test_platform_resources() {
 
   local ocm_os
   ocm_os=$(jq -r '.[] | select(.name=="ocm") | .extraIdentity.os' <<< "$resources")
-  assert_eq "$ocm_os" "darwin"
+  assert_eq "$ocm_os" "$PLATFORM_OS"
 
   local ocm_arch
   ocm_arch=$(jq -r '.[] | select(.name=="ocm") | .extraIdentity.architecture' <<< "$resources")
@@ -241,10 +249,10 @@ test_kind_resource_identity_and_digest() {
   os="$("$OCM" get cv "$(cv_ref)" -o json | jq -r '.[0].component.resources[] | select(.name=="kind") | .extraIdentity.os')" || return 1
   arch="$("$OCM" get cv "$(cv_ref)" -o json | jq -r '.[0].component.resources[] | select(.name=="kind") | .extraIdentity.architecture')" || return 1
   digest="$("$OCM" get cv "$(cv_ref)" -o json | jq -r '.[0].component.resources[] | select(.name=="kind") | .digest.value')" || return 1
-  assert_eq "$os" "darwin"
+  assert_eq "$os" "$PLATFORM_OS"
   assert_eq "$arch" "arm64"
   # Verify digest matches the pinned sha256 from constructor
-  assert_eq "$digest" "$KIND_SHA256_DARWIN_ARM64"
+  assert_eq "$digest" "$KIND_SHA256"
 }
 
 test_fetch_kind_rejects_bad_checksum() {
@@ -252,7 +260,7 @@ test_fetch_kind_rejects_bad_checksum() {
   # Serve a real binary from a file:// URL, but with a wrong KIND_SHA256_DARWIN_ARM64.
   # fetch-kind.sh must reject it.
   mkdir -p "$tmp/release/$KIND_VERSION"
-  echo "fakebinary" > "$tmp/release/$KIND_VERSION/kind-darwin-arm64"
+  echo "fakebinary" > "$tmp/release/$KIND_VERSION/kind-${PLATFORM_OS}-arm64"
 
   # Pre-create the dest file
   mkdir -p "$tmp/dist"
@@ -275,7 +283,7 @@ test_build_rejects_kind_dist_dir_outside_root() {
 
 test_kind_bin_installs_verified_executable() {
   local tmp="$1"
-  [[ "$(host_os)" == "darwin" && "$(host_arch)" == "arm64" ]] || { echo "SKIP (not darwin/arm64)"; return 0; }
+  [[ ( "$(host_os)" == "darwin" || "$(host_os)" == "linux" ) && "$(host_arch)" == "arm64" ]] || { echo "SKIP (not darwin/arm64)"; return 0; }
   _build
   SKIP_VERIFY=1 bash "$ROOT/scripts/sign.sh"
   unset KIND_BIN
@@ -286,14 +294,14 @@ test_kind_bin_installs_verified_executable() {
   # shellcheck disable=SC2031
   actual="$(sha256 "$BUILD_DIR/deploy/bin/kind")" || return 1
   # Verify hash matches the pinned sha256 from constructor
-  [[ "$actual" == "$KIND_SHA256_DARWIN_ARM64" ]] || return 1
+  [[ "$actual" == "$KIND_SHA256" ]] || return 1
   # shellcheck disable=SC2031
   "$BUILD_DIR/deploy/bin/kind" version 2>&1 | grep -q "kind $KIND_VERSION" || return 1
 }
 
 test_kind_bin_is_idempotent() {
   local tmp="$1"
-  [[ "$(host_os)" == "darwin" && "$(host_arch)" == "arm64" ]] || { echo "SKIP (not darwin/arm64)"; return 0; }
+  [[ ( "$(host_os)" == "darwin" || "$(host_os)" == "linux" ) && "$(host_arch)" == "arm64" ]] || { echo "SKIP (not darwin/arm64)"; return 0; }
   _build
   SKIP_VERIFY=1 bash "$ROOT/scripts/sign.sh"
   unset KIND_BIN
@@ -416,7 +424,7 @@ EOF
 }
 
 test_deploy_runs_all_steps() {
-  [[ "$(host_os)" == "darwin" && "$(host_arch)" == "arm64" ]] || return 0
+  [[ ( "$(host_os)" == "darwin" || "$(host_os)" == "linux" ) && "$(host_arch)" == "arm64" ]] || return 0
   [[ -f "$ROOT/scripts/deploy.sh" ]] || return 1
   _build
   _sign
@@ -441,7 +449,7 @@ test_deploy_runs_all_steps() {
   local actual
   # shellcheck disable=SC2031
   actual="$(sha256 "$BUILD_DIR/deploy/bin/kind")"
-  assert_eq "$actual" "$KIND_SHA256_DARWIN_ARM64" "kind binary sha256 after deploy"
+  assert_eq "$actual" "$KIND_SHA256" "kind binary sha256 after deploy"
 
   # docker must have been invoked (reached cluster creation)
   [[ -s "$tmpdir/docker.log" ]] || \
@@ -465,9 +473,9 @@ test_bundle_is_self_contained() {
   # Capture pinned values from repo environment before unsetting
   local pinned_version pinned_sha256 pinned_ocm_version pinned_ocm_sha256
   pinned_version="$KIND_VERSION"
-  pinned_sha256="$KIND_SHA256_DARWIN_ARM64"
+  pinned_sha256="$KIND_SHA256"
   pinned_ocm_version="$OCM_CLI_VERSION"
-  pinned_ocm_sha256="$OCM_CLI_SHA256_DARWIN_ARM64"
+  pinned_ocm_sha256="$OCM_CLI_SHA256"
 
   # Capture outer scope variables before subshells
   # shellcheck disable=SC2031
@@ -485,9 +493,9 @@ test_bundle_is_self_contained() {
     # shellcheck source=/dev/null
     source "$bundle/scripts/lib.sh"
     assert_eq "$KIND_VERSION" "$pinned_version" "bundled lib.sh reads KIND_VERSION"
-    assert_eq "$KIND_SHA256_DARWIN_ARM64" "$pinned_sha256" "bundled lib.sh reads KIND_SHA256"
+    assert_eq "$KIND_SHA256" "$pinned_sha256" "bundled lib.sh reads KIND_SHA256"
     assert_eq "$OCM_CLI_VERSION" "$pinned_ocm_version" "bundled lib.sh reads OCM_CLI_VERSION"
-    assert_eq "$OCM_CLI_SHA256_DARWIN_ARM64" "$pinned_ocm_sha256" "bundled lib.sh reads OCM_CLI_SHA256"
+    assert_eq "$OCM_CLI_SHA256" "$pinned_ocm_sha256" "bundled lib.sh reads OCM_CLI_SHA256"
 
     rm -f "$BUILD_DIR/deploy/kind-cluster.yaml"
     env -i HOME="$HOME" PATH="$PATH" SKIP_VERIFY=1 \
@@ -497,7 +505,7 @@ test_bundle_is_self_contained() {
       die "bundled kind-config.sh did not produce a valid Cluster manifest"
   )
 
-  if [[ "$(host_os)" == "darwin" && "$(host_arch)" == "arm64" ]]; then
+  if [[ ( "$(host_os)" == "darwin" || "$(host_os)" == "linux" ) && "$(host_arch)" == "arm64" ]]; then
     (
       unset KIND_VERSION KIND_SHA256_DARWIN_ARM64 KIND_DIST_FILE KIND_DIST_DIR KIND_BIN
       unset OCM_CLI_VERSION OCM_CLI_SHA256_DARWIN_ARM64 OCM_CLI_DIST_FILE OCM_CLI_DIST_DIR
@@ -532,10 +540,10 @@ test_ocm_resource_identity_and_digest() {
   version="$(echo "$cv_json" | jq -r '.[0].component.resources[] | select(.name=="ocm") | .version')"
   digest="$(echo "$cv_json" | jq -r '.[0].component.resources[] | select(.name=="ocm") | .digest.value')"
   assert_eq "$rtype" "executable" "ocm resource type"
-  assert_eq "$os" "darwin" "ocm extraIdentity.os"
+  assert_eq "$os" "$PLATFORM_OS" "ocm extraIdentity.os"
   assert_eq "$arch" "arm64" "ocm extraIdentity.architecture"
   assert_eq "$version" "$OCM_CLI_VERSION" "ocm resource version"
-  assert_eq "$digest" "$OCM_CLI_SHA256_DARWIN_ARM64" "ocm resource digest"
+  assert_eq "$digest" "$OCM_CLI_SHA256" "ocm resource digest"
 }
 
 test_fetch_ocm_rejects_bad_checksum() {
@@ -544,7 +552,7 @@ test_fetch_ocm_rejects_bad_checksum() {
   tmpdir="$(mktemp -d "$tmp/fetchocm.XXXXXX")"
   mkdir -p "$tmpdir/release/${OCM_CLI_VERSION}"
   # Serve a wrong binary
-  echo "not-ocm" > "$tmpdir/release/${OCM_CLI_VERSION}/ocm-darwin-arm64"
+  echo "not-ocm" > "$tmpdir/release/${OCM_CLI_VERSION}/ocm-${PLATFORM_OS}-arm64"
   local dest="$tmpdir/dist/$OCM_CLI_DIST_FILE"
   mkdir -p "$tmpdir/dist"
   echo "previous" > "$dest"
@@ -578,18 +586,22 @@ test_ocm_version_pins_consistent() {
     unset OCM_CLI_VERSION OCM_CLI_SHA256_DARWIN_ARM64
     # shellcheck source=/dev/null
     source "$ROOT/scripts/lib.sh"
-    echo "$OCM_CLI_SHA256_DARWIN_ARM64"
+    echo "$OCM_CLI_SHA256"
   )"
   bootstrap_version="$(_bootstrap_pin OCM_BOOTSTRAP_VERSION)"
-  bootstrap_sha="$(_bootstrap_pin OCM_BOOTSTRAP_SHA256_DARWIN_ARM64)"
+  bootstrap_sha="$(_bootstrap_pin "OCM_BOOTSTRAP_SHA256_$(echo "$PLATFORM_OS" | tr '[:lower:]' '[:upper:]')_ARM64")"
 
   assert_eq "$bootstrap_version" "$constructor_version" "bootstrap version matches constructor"
   assert_eq "$bootstrap_sha" "$constructor_sha" "bootstrap sha256 matches constructor label"
+  local offline_pin
+  offline_pin="$(sed -n "s/^[[:space:]]*$PLATFORM_OS) pin=\([a-f0-9]*\) ;;$/\1/p" "$ROOT/scripts/offline-run.sh")"
+  assert_eq "$offline_pin" "$constructor_sha" "offline entrypoint pin matches constructor"
+
 }
 
 test_bootstrap_rejects_bad_ocm_checksum() {
   local tmp="$1"
-  [[ "$(host_os)" == "darwin" && "$(host_arch)" == "arm64" ]] || return 0
+  [[ ( "$(host_os)" == "darwin" || "$(host_os)" == "linux" ) && "$(host_arch)" == "arm64" ]] || return 0
   _build
   _sign
 
@@ -598,7 +610,7 @@ test_bootstrap_rejects_bad_ocm_checksum() {
   local bootstrap_ver
   bootstrap_ver="$(_bootstrap_pin OCM_BOOTSTRAP_VERSION)"
   mkdir -p "$tmpdir/release/$bootstrap_ver"
-  echo "fake-ocm" > "$tmpdir/release/$bootstrap_ver/ocm-darwin-arm64"
+  echo "fake-ocm" > "$tmpdir/release/$bootstrap_ver/ocm-${PLATFORM_OS}-arm64"
 
   local stub
   stub="$(_stub_docker "$tmpdir")"
@@ -619,7 +631,7 @@ test_bootstrap_rejects_bad_ocm_checksum() {
 
 test_bootstrap_rejects_wrong_key() {
   local tmp="$1"
-  [[ "$(host_os)" == "darwin" && "$(host_arch)" == "arm64" ]] || return 0
+  [[ ( "$(host_os)" == "darwin" || "$(host_os)" == "linux" ) && "$(host_arch)" == "arm64" ]] || return 0
   _build
   _sign
 
@@ -627,13 +639,24 @@ test_bootstrap_rejects_wrong_key() {
   tmpdir="$(mktemp -d "$tmp/bstrap_key.XXXXXX")"
   mkdir -p "$tmpdir/release/${OCM_CLI_VERSION}"
   cp "$OCM_CLI_DIST_DIR/$OCM_CLI_DIST_FILE" \
-    "$tmpdir/release/${OCM_CLI_VERSION}/ocm-darwin-arm64"
+    "$tmpdir/release/${OCM_CLI_VERSION}/ocm-${PLATFORM_OS}-arm64"
 
   # Wrong verify config
-  "$OCM" create rsakeypair "$tmpdir/wrong.priv" "$tmpdir/wrong.pub"
-  "$OCM" create configfile \
-    --signing-server-certificate "$tmpdir/wrong.pub" \
-    "$tmpdir/wrong.ocmconfig"
+  openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$tmpdir/wrong.priv" 2>/dev/null
+  openssl rsa -pubout -in "$tmpdir/wrong.priv" -out "$tmpdir/wrong.pub" 2>/dev/null
+  cat > "$tmpdir/wrong.ocmconfig" <<CONFIG
+type: generic.config.ocm.software/v1
+configurations:
+  - type: credentials.config.ocm.software
+    consumers:
+      - identity:
+          type: RSA/v1alpha1
+          algorithm: RSASSA-PSS
+          signature: default
+        credentials:
+          - type: RSACredentials/v1
+            publicKeyPEMFile: $tmpdir/wrong.pub
+CONFIG
 
   local stub
   stub="$(_stub_docker "$tmpdir")"
@@ -653,7 +676,7 @@ test_bootstrap_rejects_wrong_key() {
 
 test_bootstrap_deploys_with_component_ocm() {
   local tmp="$1"
-  [[ "$(host_os)" == "darwin" && "$(host_arch)" == "arm64" ]] || return 0
+  [[ ( "$(host_os)" == "darwin" || "$(host_os)" == "linux" ) && "$(host_arch)" == "arm64" ]] || return 0
   _build
   _sign
 
@@ -661,7 +684,7 @@ test_bootstrap_deploys_with_component_ocm() {
   tmpdir="$(mktemp -d "$tmp/bstrap_full.XXXXXX")"
   mkdir -p "$tmpdir/release/${OCM_CLI_VERSION}"
   cp "$OCM_CLI_DIST_DIR/$OCM_CLI_DIST_FILE" \
-    "$tmpdir/release/${OCM_CLI_VERSION}/ocm-darwin-arm64"
+    "$tmpdir/release/${OCM_CLI_VERSION}/ocm-${PLATFORM_OS}-arm64"
 
   local stub
   stub="$(_stub_docker "$tmpdir")"
@@ -677,16 +700,16 @@ test_bootstrap_deploys_with_component_ocm() {
 
   # Bootstrap OCM sha matches pin
   local bootstrap_sha_pin
-  bootstrap_sha_pin="$(_bootstrap_pin OCM_BOOTSTRAP_SHA256_DARWIN_ARM64)"
+  bootstrap_sha_pin="$(_bootstrap_pin "OCM_BOOTSTRAP_SHA256_$(echo "$PLATFORM_OS" | tr '[:lower:]' '[:upper:]')_ARM64")"
   assert_eq "$(sha256 "$boot_dir/bootstrap/bin/ocm")" "$bootstrap_sha_pin" \
     "bootstrap ocm sha256"
 
   # Component OCM installed and sha matches pin
-  assert_eq "$(sha256 "$boot_dir/deploy/bin/ocm")" "$OCM_CLI_SHA256_DARWIN_ARM64" \
+  assert_eq "$(sha256 "$boot_dir/deploy/bin/ocm")" "$OCM_CLI_SHA256" \
     "component ocm sha256"
 
   # kind binary installed
-  assert_eq "$(sha256 "$boot_dir/deploy/bin/kind")" "$KIND_SHA256_DARWIN_ARM64" \
+  assert_eq "$(sha256 "$boot_dir/deploy/bin/kind")" "$KIND_SHA256" \
     "kind binary sha256 via bootstrap"
 
   # kind-cluster.yaml written
@@ -750,10 +773,10 @@ test_package_produces_verifiable_release() {
   [[ -f "$rel/bootstrap.sh" ]] || { echo "FAIL: bootstrap.sh not found" >&2; return 1; }
   [[ -f "$rel/SHA256SUMS" ]] || { echo "FAIL: SHA256SUMS not found" >&2; return 1; }
 
-  # SHA256SUMS has exactly 3 lines and each hash is correct
+  # SHA256SUMS has exactly 5 lines and each hash is correct
   local lines
   lines="$(wc -l < "$rel/SHA256SUMS" | tr -d ' ')"
-  [[ "$lines" -eq 3 ]] || { echo "FAIL: SHA256SUMS has $lines lines, expected 3" >&2; return 1; }
+  [[ "$lines" -eq 5 ]] || { echo "FAIL: SHA256SUMS has $lines lines, expected 5" >&2; return 1; }
   (cd "$rel" && shasum -a 256 -c SHA256SUMS >/dev/null)
 
   # bootstrap.sh and public key match source files
@@ -786,7 +809,119 @@ EOF
     | jq -r '.[0].component.version' | grep -qx "$VERSION"
 }
 
+test_offline_package_boundaries() {
+  local tmp="$1"
+  _build || return 1
+  _sign || return 1
+  bash "$ROOT/scripts/package.sh" >/dev/null || return 1
+  local archive="$tmp/release/platform-airgap-${VERSION}-${PLATFORM_OS}-arm64.tar.gz"
+  local stub
+  stub="$(_stub_docker "$tmp")"
+  cat > "$stub/curl" <<'STUB'
+#!/usr/bin/env bash
+echo attempted >> "$(dirname "$0")/../network.log"
+exit 99
+STUB
+  chmod +x "$stub/curl"
+  # Authentic package proceeds to docker load, without curl, PATH ocm, or docker pull.
+  PATH="$stub:$PATH" BUILD_DIR="$tmp/offline" EXPECTED_SOURCE_REVISION="$SOURCE_REVISION" \
+    assert_fails bash "$ROOT/scripts/offline-run.sh" "$archive" "$tmp/keys/public.pem" || return 1
+  grep -q '^load -i ' "$tmp/docker.log" || return 1
+  [[ ! -s "$tmp/network.log" && ! -s "$tmp/ocm.log" ]] || return 1
+  ! grep -q '^pull ' "$tmp/docker.log" || return 1
+  local variant dir
+  for variant in bootstrap image tamper architecture provenance wrong-key; do
+    dir="$tmp/variant-$variant"
+    mkdir -p "$dir"
+    tar -xzf "$archive" -C "$dir"
+    case "$variant" in
+      bootstrap) rm "$dir/bootstrap/ocm" ;;
+      image|tamper)
+        local digest
+        digest="$("$OCM" get cv "$(cv_ref)" -o json | jq -r '.[0].component.resources[] | select(.name=="kind-node-image") | .digest.value')"
+        python3 - "$dir/ctf" "$digest" "$variant" <<'PY' || return 1
+import pathlib, hashlib, sys
+for path in pathlib.Path(sys.argv[1]).rglob('*'):
+    if path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest() == sys.argv[2]:
+        if sys.argv[3] == 'image': path.unlink()
+        else:
+            path.chmod(0o600)
+            path.write_bytes(b'tampered')
+        break
+else: raise SystemExit('image blob not found')
+PY
+        ;;
+      architecture) jq '.architecture="amd64"' "$dir/metadata.json" > "$dir/m"; mv "$dir/m" "$dir/metadata.json" ;;
+      provenance) jq '.sourceRevision="wrong"' "$dir/metadata.json" > "$dir/m"; mv "$dir/m" "$dir/metadata.json" ;;
+      wrong-key) openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$dir/private" 2>/dev/null
+        openssl rsa -pubout -in "$dir/private" -out "$dir/public" 2>/dev/null ;;
+    esac
+    tar -czf "$tmp/$variant.tar.gz" -C "$dir" .
+    rm -f "$tmp/docker.log"
+    local key="$tmp/keys/public.pem"
+    [[ "$variant" != wrong-key ]] || key="$dir/public"
+    PATH="$stub:$PATH" BUILD_DIR="$tmp/reject-$variant" \
+      assert_fails bash "$ROOT/scripts/offline-run.sh" "$tmp/$variant.tar.gz" "$key" || return 1
+    [[ ! -s "$tmp/docker.log" && ! -s "$tmp/network.log" ]] || return 1
+  done
+}
+
+test_explicit_missing_keys_fail() {
+  local tmp="$1"
+  SIGNING_KEY="$tmp/missing-private" assert_fails bash "$ROOT/scripts/keys.sh" || return 1
+  VERIFY_KEY="$tmp/missing-public" assert_fails bash "$ROOT/scripts/keys.sh" || return 1
+  [[ ! -f "$tmp/missing-private" && ! -f "$tmp/missing-public" ]] || return 1
+  openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$tmp/supplied-private" 2>/dev/null
+  local before
+  before="$(sha256 "$tmp/supplied-private")"
+  SIGNING_KEY="$tmp/supplied-private" bash "$ROOT/scripts/keys.sh" || return 1
+  assert_eq "$(sha256 "$tmp/supplied-private")" "$before" "explicit private key preserved"
+  openssl rsa -pubout -in "$tmp/supplied-private" -out "$tmp/expected-public" 2>/dev/null
+  cmp "$tmp/expected-public" "$tmp/keys/public.pem" || return 1
+  VERIFY_KEY="$tmp/expected-public" BUILD_DIR="$tmp/public-only" \
+    assert_fails bash "$ROOT/scripts/keys.sh" || return 1
+  [[ ! -f "$tmp/public-only/keys/private.pem" ]] || return 1
+}
+
 # ── Run all tests ─────────────────────────────────────────────────────────────
+
+test_lib_dies_on_unsupported_os() {
+  local tmpdir="$1"
+  mkdir -p "$tmpdir/stub"
+  # Stub uname: -s prints FreeBSD, -m prints arm64
+  cat > "$tmpdir/stub/uname" <<'EOF'
+#!/usr/bin/env bash
+case "$1" in -s) echo FreeBSD;; -m) echo arm64;; esac
+EOF
+  chmod +x "$tmpdir/stub/uname"
+  local out
+  out="$(PATH="$tmpdir/stub:$PATH" bash -c 'source "$1"' _ "$ROOT/scripts/lib.sh" 2>&1)" \
+    && return 1  # should have exited non-zero
+  assert_contains "$out" "ERROR: Unsupported operating system"
+}
+
+test_e2e_cleanup_uses_configured_cluster_name() {
+  local tmpdir="$1"
+  mkdir -p "$tmpdir/scripts" "$tmpdir/deploy"
+  cp "$ROOT/scripts/lib.sh" "$ROOT/scripts/e2e.sh" "$tmpdir/scripts/"
+  # Stub deploy.sh: writes a cluster config with a different name then exits 1
+  cat > "$tmpdir/scripts/deploy.sh" <<'DEPLOY'
+#!/usr/bin/env bash
+mkdir -p "$BUILD_DIR/deploy"
+printf 'kind: Cluster\nname: renamed-cluster\n' > "$BUILD_DIR/deploy/kind-cluster.yaml"
+exit 1
+DEPLOY
+  chmod +x "$tmpdir/scripts/deploy.sh"
+  # Stub kind: log every invocation
+  cat > "$tmpdir/kind" <<'KIND'
+#!/usr/bin/env bash
+echo "$*" >> "$(dirname "$0")/kind.log"
+KIND
+  chmod +x "$tmpdir/kind"
+  BUILD_DIR="$tmpdir" KIND_BIN="$tmpdir/kind" KEEP_CLUSTER=0 \
+    bash "$tmpdir/scripts/e2e.sh" >/dev/null 2>&1 || true
+  assert_contains "$(cat "$tmpdir/kind.log" 2>/dev/null)" "delete cluster --name renamed-cluster"
+}
 
 run_test "build produces platform tree" test_build_produces_platform_tree
 run_test "platform resources are correct" test_platform_resources
@@ -818,5 +953,10 @@ run_test "package rejects mismatched public key" test_package_rejects_mismatched
 run_test "package produces verifiable release" test_package_produces_verifiable_release
 
 echo ""
+run_test "offline package rejects incomplete, tampered or untrusted inputs without downloads" test_offline_package_boundaries
+run_test "missing explicitly supplied keys fail" test_explicit_missing_keys_fail
+run_test "lib dies on unsupported os" test_lib_dies_on_unsupported_os
+run_test "e2e cleanup uses configured cluster name" test_e2e_cleanup_uses_configured_cluster_name
+
 echo "Results: $PASS passed, $FAIL failed"
 [[ $FAIL -eq 0 ]]

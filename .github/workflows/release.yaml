@@ -1,6 +1,12 @@
 name: Release
 
 on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Component version (semver without v)
+        required: true
+        type: string
   push:
     tags:
       - 'v*.*.*'
@@ -32,12 +38,24 @@ jobs:
 
   release:
     needs: test
-    runs-on: ubuntu-latest
+    if: github.repository == 'lioramilbaum/platform' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-26.04-arm
     permissions:
       contents: write
       packages: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Select component version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          version="${INPUT_VERSION:-${GITHUB_REF_NAME#v}}"
+          if [[ ! "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Version must be semver without v"
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
 
       - name: Install tools
         run: make tools
@@ -51,16 +69,29 @@ jobs:
             exit 1
           fi
           umask 077
-          echo "$OCM_SIGNING_KEY" > "$RUNNER_TEMP/signing.pem"
+          printf '%s\n' "$OCM_SIGNING_KEY" > "$RUNNER_TEMP/signing.pem"
           openssl rsa -in "$RUNNER_TEMP/signing.pem" -pubout -out "$RUNNER_TEMP/public.pem"
           echo "SIGNING_KEY=$RUNNER_TEMP/signing.pem" >> "$GITHUB_ENV"
           echo "VERIFY_KEY=$RUNNER_TEMP/public.pem" >> "$GITHUB_ENV"
 
       - name: Build, sign, and package
         run: |
-          VERSION="${GITHUB_REF_NAME#v}" make build sign package OCM=bin/ocm
+          SOURCE_REVISION="$GITHUB_SHA" make fetch-image build sign package OCM=bin/ocm
+
+      - name: Upload offline package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: platform-airgap-linux-arm64
+          path: |
+            build/release/platform-airgap-*.tar.gz
+            build/release/metadata.json
+            build/release/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
 
       - name: Log in to GitHub Container Registry
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
@@ -68,12 +99,14 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish component to GHCR
+        if: startsWith(github.ref, 'refs/tags/v')
         env:
           OCM_REPO: oci://ghcr.io/${{ github.repository_owner }}/ocm
         run: |
-          VERSION="${GITHUB_REF_NAME#v}" make publish OCM=bin/ocm
+          make publish OCM=bin/ocm
 
       - name: Create GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

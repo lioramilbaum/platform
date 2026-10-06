@@ -11,10 +11,20 @@ mkdir -p "$KEYS_DIR"
 PRIVATE_KEY="${SIGNING_KEY:-$KEYS_DIR/private.pem}"
 PUBLIC_KEY="${VERIFY_KEY:-$KEYS_DIR/public.pem}"
 
-if [[ ! -f "$PRIVATE_KEY" || ! -f "$PUBLIC_KEY" ]]; then
+[[ -z "${SIGNING_KEY:-}" || -f "$SIGNING_KEY" ]] || die "SIGNING_KEY not found: $SIGNING_KEY"
+[[ -z "${VERIFY_KEY:-}" || -f "$VERIFY_KEY" ]] || die "VERIFY_KEY not found: $VERIFY_KEY"
+
+if [[ ! -f "$PRIVATE_KEY" ]]; then
+  [[ -z "${VERIFY_KEY:-}" ]] || die "VERIFY_KEY requires an existing signing key"
   openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$PRIVATE_KEY" 2>/dev/null
+fi
+if [[ ! -f "$PUBLIC_KEY" ]]; then
   openssl rsa -pubout -in "$PRIVATE_KEY" -out "$PUBLIC_KEY" 2>/dev/null
 fi
+# Refuse mismatched existing keys before generating a signing configuration.
+private_public="$(openssl pkey -in "$PRIVATE_KEY" -pubout 2>/dev/null)"
+verify_public="$(openssl pkey -pubin -in "$PUBLIC_KEY" -pubout 2>/dev/null)"
+[[ "$private_public" == "$verify_public" ]] || die "Signing and verification keys do not match"
 
 cat > "$BUILD_DIR/sign.ocmconfig" <<EOF
 type: generic.config.ocm.software/v1

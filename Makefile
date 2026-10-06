@@ -7,20 +7,21 @@ GOARCH         ?= $(subst aarch64,arm64,$(subst x86_64,amd64,$(GOARCH_RAW)))
 
 export VERSION OCM
 
-.PHONY: help tools build sign verify publish package lint test kind-config kind e2e clean
+.PHONY: help tools fetch-image build sign verify publish package lint test kind-config kind e2e deploy-offline e2e-airgap clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
 
 tools: ## Download the OCM CLI into bin/ocm and fetch kind binary
+	@bash scripts/fetch-ocm.sh
 	@mkdir -p bin
-	curl -sSfL \
-		"https://github.com/open-component-model/open-component-model/releases/download/$(OCM_CLI_VERSION)/ocm-$(GOOS)-$(GOARCH)" \
-		-o bin/ocm
+	cp bin/dist/ocm-$(OCM_CLI_VERSION)-$(GOOS)-$(GOARCH) bin/ocm
 	chmod +x bin/ocm
 	@bash scripts/fetch-kind.sh
-	@bash scripts/fetch-ocm.sh
+
+fetch-image: ## Fetch and save the pinned kind node image (connected Docker required)
+	@bash scripts/fetch-kind-image.sh
 
 build: ## Build the OCM component archive (CTF)
 	@bash scripts/build.sh
@@ -40,7 +41,7 @@ kind: build sign ## Install the verified kind binary into build/deploy/bin/kind
 publish: ## Transfer the CTF to an OCI registry (requires OCM_REPO=...)
 	@bash scripts/publish.sh
 
-package: ## Package signed CTF, public key and bootstrap.sh into build/release
+package: ## Transport and package signed CTF with offline bootstrap into build/release
 	@bash scripts/package.sh
 
 lint: ## Lint shell scripts (if shellcheck is available)
@@ -53,8 +54,14 @@ lint: ## Lint shell scripts (if shellcheck is available)
 test: ## Run the test suite
 	@bash test/run.sh
 
-e2e: build sign ## End-to-end test using kind (requires docker)
+e2e: fetch-image build sign ## End-to-end test using kind (requires docker)
 	@bash scripts/e2e.sh
 
 clean: ## Remove build artifacts
 	rm -rf build bin
+
+deploy-offline: ## Deploy PACKAGE using independently trusted VERIFY_KEY
+	@bash scripts/offline-run.sh "$(PACKAGE)" "$(VERIFY_KEY)"
+
+e2e-airgap: ## Consume PACKAGE without rebuilding or signing; verify readiness and clean up
+	@KEEP_CLUSTER=0 bash scripts/offline-run.sh "$(PACKAGE)" "$(VERIFY_KEY)"
