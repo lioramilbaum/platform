@@ -7,7 +7,10 @@
   "customManagers": [
     {
       "customType": "regex",
-      "fileMatch": ["^component-constructor\\.yaml$", "^scripts/bootstrap\\.sh$"],
+      "managerFilePatterns": [
+        "/^component-constructor\\.yaml$/",
+        "/^scripts/bootstrap\\.sh$/"
+      ],
       "matchStrings": [
         "name: ocm\\n\\s+type: executable\\n\\s+version: (?<currentValue>v[0-9.]+)",
         "OCM_BOOTSTRAP_VERSION=\"(?<currentValue>v[0-9.]+)\""
@@ -17,7 +20,9 @@
     },
     {
       "customType": "regex",
-      "fileMatch": ["^component-constructor\\.yaml$"],
+      "managerFilePatterns": [
+        "/^component-constructor\\.yaml$/"
+      ],
       "matchStrings": [
         "name: kind\\n\\s+type: executable\\n\\s+version: (?<currentValue>v[0-9.]+)"
       ],
