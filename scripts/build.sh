@@ -18,6 +18,9 @@ esac
 
 bash "$(dirname "$0")/fetch-kind.sh"
 bash "$(dirname "$0")/fetch-ocm.sh"
+case "$KIND_IMAGE_ARCHIVE" in "$ROOT"/*) ;; *) die "KIND_IMAGE_ARCHIVE must be inside ROOT" ;; esac
+export KIND_IMAGE_INPUT_PATH=".${KIND_IMAGE_ARCHIVE#"$ROOT"}"
+[[ -f "$KIND_IMAGE_ARCHIVE" ]] || die "Node image archive missing; run make fetch-image on a connected Docker host"
 
 mkdir -p "$BUILD_DIR"
 rm -rf "$CTF"

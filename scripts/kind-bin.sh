@@ -4,7 +4,7 @@ set -euo pipefail
 source "$(dirname "$0")/lib.sh"
 
 require "$OCM" jq
-require_darwin_arm64
+require_platform
 
 if [[ "${SKIP_VERIFY:-0}" != "1" ]]; then
   # shellcheck source=scripts/verify.sh
@@ -13,14 +13,14 @@ fi
 
 # OCM v0.17 uses genericBlobDigest/v1: descriptor .digest.value is the raw SHA-256 of the file bytes
 expected="$("$OCM" get cv "$(cv_ref)" -o json \
-  | jq -r '.[0].component.resources[]
+  | jq -r --arg os "$PLATFORM_OS" '.[0].component.resources[]
     | select(.name=="kind"
-      and .extraIdentity.os=="darwin"
+      and .extraIdentity.os==$os
       and .extraIdentity.architecture=="arm64")
     | .digest.value')"
 
-[[ "$expected" == "$KIND_SHA256_DARWIN_ARM64" ]] \
-  || die "kind descriptor digest ($expected) does not match pinned checksum ($KIND_SHA256_DARWIN_ARM64)"
+[[ "$expected" == "$KIND_SHA256" ]] \
+  || die "kind descriptor digest ($expected) does not match pinned checksum ($KIND_SHA256)"
 
 mkdir -p "$(dirname "$KIND_BIN")"
 tmpdir="$(mktemp -d "$(dirname "$KIND_BIN")/.kind.XXXXXX")"
@@ -28,7 +28,7 @@ trap 'rm -rf "$tmpdir"' EXIT
 
 "$OCM" download resource \
   "$(cv_ref)" \
-  --identity "name=kind,os=darwin,architecture=arm64" \
+  --identity "name=kind,os=${PLATFORM_OS},architecture=arm64" \
   --output "$tmpdir/kind"
 
 # OCM v0.17 uses genericBlobDigest/v1 normalization for file-input resources,
@@ -39,4 +39,4 @@ actual="$(sha256 "$tmpdir/kind")"
 
 chmod 0755 "$tmpdir/kind"
 mv -f "$tmpdir/kind" "$KIND_BIN"
-echo "kind $KIND_VERSION darwin/arm64 installed at $KIND_BIN"
+echo "kind $KIND_VERSION ${PLATFORM_OS}/arm64 installed at $KIND_BIN"
