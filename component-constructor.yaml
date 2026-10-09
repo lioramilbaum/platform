@@ -28,7 +28,7 @@ components:
           mediaType: application/octet-stream
       - name: ocm
         type: executable
-        version: v0.17.0
+        version: v0.19.1
         labels:
           # When Renovate bumps the OCM CLI version, also update the sha256sum label below
           # AND OCM_BOOTSTRAP_SHA256_DARWIN_ARM64 in scripts/bootstrap.sh (enforced by test).
