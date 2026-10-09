@@ -13,7 +13,7 @@
 set -euo pipefail
 
 # Pinned bootstrap OCM — Renovate manages this value.
-OCM_BOOTSTRAP_VERSION="v0.17.0"
+OCM_BOOTSTRAP_VERSION="v0.19.1"
 OCM_BOOTSTRAP_SHA256_LINUX_ARM64="697e44f71ab0dbd02287c6544fa17be0c73c0a9d6e873f9a2c91fd92c9acbc86"
 OCM_BOOTSTRAP_SHA256_DARWIN_ARM64="ae87ac4943e81396054367315395787fb7b71a697d946f8bb62de67bcb93e544"
 OCM_BOOTSTRAP_BASE_URL="${OCM_BOOTSTRAP_BASE_URL:-https://github.com/open-component-model/open-component-model/releases/download}"
