@@ -60,8 +60,13 @@ jq -e --arg os "$os" --arg arch "$arch" '.os==$os and .architecture==$arch and .
 version="$(jq -er '.version' "$work/metadata.json")"
 [[ "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]] || die "Invalid package version"
 [[ -z "${EXPECTED_VERSION:-}" || "$version" == "$EXPECTED_VERSION" ]] || die "Unexpected package version"
+# Pinned bootstrap OCM — Renovate manages this value.
+# shellcheck disable=SC2034
+OCM_BOOTSTRAP_VERSION="v0.21.0"
 case "$os" in
+  # renovate: datasource=github-release-attachments depName=open-component-model/open-component-model
   darwin) pin=6edd3099ccffb513643ee5493da967d66a3d71a176273e4c92199d18c868910e ;;
+  # renovate: datasource=github-release-attachments depName=open-component-model/open-component-model
   linux) pin=ca7676288993af5fe71593d5747deec44bcacf99bb3d2fde04754433bca12b69 ;;
 esac
 actual="$(python3 - "$work/bootstrap/ocm" <<'PY'
