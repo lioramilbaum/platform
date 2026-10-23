@@ -1,13 +1,14 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended"
+    "config:recommended",
+    "group:all"
   ],
   "separateMajorMinor": false,
   "customManagers": [
     {
       "customType": "regex",
-      "fileMatch": ["^component-constructor\\.yaml$", "^scripts/bootstrap\\.sh$"],
+      "managerFilePatterns": ["/^component-constructor\\.yaml$/", "/^scripts/bootstrap\\.sh$/"],
       "matchStrings": [
         "name: ocm\\n\\s+type: executable\\n\\s+version: (?<currentValue>v[0-9.]+)",
         "OCM_BOOTSTRAP_VERSION=\"(?<currentValue>v[0-9.]+)\""
@@ -17,12 +18,60 @@
     },
     {
       "customType": "regex",
-      "fileMatch": ["^component-constructor\\.yaml$"],
+      "managerFilePatterns": ["/^component-constructor\\.yaml$/"],
       "matchStrings": [
         "name: kind\\n\\s+type: executable\\n\\s+version: (?<currentValue>v[0-9.]+)"
       ],
       "depNameTemplate": "kubernetes-sigs/kind",
       "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "description": "OCM CLI darwin/arm64 SHA256 digest (bootstrap.sh)",
+      "managerFilePatterns": ["/^scripts/bootstrap\\.sh$/"],
+      "matchStrings": [
+        "OCM_BOOTSTRAP_VERSION=\"(?<currentValue>v[0-9]+\\.[0-9]+\\.[0-9]+)\"[\\s\\S]*?# renovate: datasource=(?<datasource>[a-z-]+) depName=(?<depName>[^\\s]+)\\nOCM_BOOTSTRAP_SHA256_DARWIN_ARM64=\"(?<currentDigest>[0-9a-f]{64})\""
+      ]
+    },
+    {
+      "customType": "regex",
+      "description": "OCM CLI linux/arm64 SHA256 digest (bootstrap.sh)",
+      "managerFilePatterns": ["/^scripts/bootstrap\\.sh$/"],
+      "matchStrings": [
+        "OCM_BOOTSTRAP_VERSION=\"(?<currentValue>v[0-9]+\\.[0-9]+\\.[0-9]+)\"[\\s\\S]*?# renovate: datasource=(?<datasource>[a-z-]+) depName=(?<depName>[^\\s]+)\\nOCM_BOOTSTRAP_SHA256_LINUX_ARM64=\"(?<currentDigest>[0-9a-f]{64})\""
+      ]
+    },
+    {
+      "customType": "regex",
+      "description": "OCM CLI darwin/arm64 SHA256 digest (component-constructor.yaml)",
+      "managerFilePatterns": ["/^component-constructor\\.yaml$/"],
+      "matchStrings": [
+        "name: ocm\\n\\s+type: executable\\n\\s+version: (?<currentValue>v[0-9]+\\.[0-9]+\\.[0-9]+)[\\s\\S]*?# renovate: datasource=(?<datasource>[a-z-]+) depName=(?<depName>[^\\s]+)\\n\\s+- name: ocm\\.lioramilbaum\\.github\\.com/sha256sum-darwin-arm64\\n\\s+value: \"(?<currentDigest>[0-9a-f]{64})\""
+      ]
+    },
+    {
+      "customType": "regex",
+      "description": "OCM CLI linux/arm64 SHA256 digest (component-constructor.yaml)",
+      "managerFilePatterns": ["/^component-constructor\\.yaml$/"],
+      "matchStrings": [
+        "name: ocm\\n\\s+type: executable\\n\\s+version: (?<currentValue>v[0-9]+\\.[0-9]+\\.[0-9]+)[\\s\\S]*?# renovate: datasource=(?<datasource>[a-z-]+) depName=(?<depName>[^\\s]+)\\n\\s+- name: ocm\\.lioramilbaum\\.github\\.com/sha256sum-linux-arm64\\n\\s+value: \"(?<currentDigest>[0-9a-f]{64})\""
+      ]
+    },
+    {
+      "customType": "regex",
+      "description": "OCM CLI darwin/arm64 SHA256 digest (offline-run.sh)",
+      "managerFilePatterns": ["/^scripts/offline-run\\.sh$/"],
+      "matchStrings": [
+        "OCM_BOOTSTRAP_VERSION=\"(?<currentValue>v[0-9]+\\.[0-9]+\\.[0-9]+)\"[\\s\\S]*?# renovate: datasource=(?<datasource>[a-z-]+) depName=(?<depName>[^\\s]+)\\n\\s+darwin\\) pin=(?<currentDigest>[0-9a-f]{64}) ;;"
+      ]
+    },
+    {
+      "customType": "regex",
+      "description": "OCM CLI linux/arm64 SHA256 digest (offline-run.sh)",
+      "managerFilePatterns": ["/^scripts/offline-run\\.sh$/"],
+      "matchStrings": [
+        "OCM_BOOTSTRAP_VERSION=\"(?<currentValue>v[0-9]+\\.[0-9]+\\.[0-9]+)\"[\\s\\S]*?# renovate: datasource=(?<datasource>[a-z-]+) depName=(?<depName>[^\\s]+)\\n\\s+linux\\) pin=(?<currentDigest>[0-9a-f]{64}) ;;"
+      ]
     }
   ]
 }

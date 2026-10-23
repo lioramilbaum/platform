@@ -593,10 +593,20 @@ test_ocm_version_pins_consistent() {
 
   assert_eq "$bootstrap_version" "$constructor_version" "bootstrap version matches constructor"
   assert_eq "$bootstrap_sha" "$constructor_sha" "bootstrap sha256 matches constructor label"
-  local offline_pin
+  local offline_pin offline_bootstrap_version
   offline_pin="$(sed -n "s/^[[:space:]]*$PLATFORM_OS) pin=\([a-f0-9]*\) ;;$/\1/p" "$ROOT/scripts/offline-run.sh")"
   assert_eq "$offline_pin" "$constructor_sha" "offline entrypoint pin matches constructor"
+  offline_bootstrap_version="$(awk -F'"' '/^OCM_BOOTSTRAP_VERSION=/{print $2}' "$ROOT/scripts/offline-run.sh")"
+  assert_eq "$offline_bootstrap_version" "$constructor_version" "offline-run.sh OCM_BOOTSTRAP_VERSION matches constructor"
 
+}
+
+test_ocm_renovate_anchors_consistent() {
+  local version got
+  # shellcheck source=/dev/null
+  version="$(unset OCM_CLI_VERSION; source "$ROOT/scripts/lib.sh"; echo "$OCM_CLI_VERSION")"
+  got="$(awk -F'"' '/^OCM_BOOTSTRAP_VERSION=/{print $2}' "$ROOT/scripts/offline-run.sh")"
+  assert_eq "$got" "$version" "scripts/offline-run.sh OCM_BOOTSTRAP_VERSION" || return 1
 }
 
 test_bootstrap_rejects_bad_ocm_checksum() {
@@ -944,6 +954,7 @@ run_test "ocm resource identity and digest" test_ocm_resource_identity_and_diges
 run_test "fetch ocm rejects bad checksum" test_fetch_ocm_rejects_bad_checksum
 run_test "build rejects ocm dist dir outside root" test_build_rejects_ocm_dist_dir_outside_root
 run_test "ocm version pins consistent" test_ocm_version_pins_consistent
+run_test "ocm renovate anchors consistent" test_ocm_renovate_anchors_consistent
 run_test "bootstrap rejects bad ocm checksum" test_bootstrap_rejects_bad_ocm_checksum
 run_test "bootstrap rejects wrong key" test_bootstrap_rejects_wrong_key
 run_test "bootstrap deploys with component ocm" test_bootstrap_deploys_with_component_ocm

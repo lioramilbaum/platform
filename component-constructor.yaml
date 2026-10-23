@@ -30,10 +30,13 @@ components:
         type: executable
         version: v0.21.0
         labels:
-          # When Renovate bumps the OCM CLI version, also update the sha256sum label below
-          # AND OCM_BOOTSTRAP_SHA256_DARWIN_ARM64 in scripts/bootstrap.sh (enforced by test).
+          # Renovate manages the OCM CLI version and these sha256sum labels through the
+          # "# renovate: datasource=... depName=..." anchors. Mirrored pins in
+          # scripts/bootstrap.sh and scripts/offline-run.sh are enforced by test.
+          # renovate: datasource=github-release-attachments depName=open-component-model/open-component-model
           - name: ocm.lioramilbaum.github.com/sha256sum-darwin-arm64
             value: "6edd3099ccffb513643ee5493da967d66a3d71a176273e4c92199d18c868910e"
+          # renovate: datasource=github-release-attachments depName=open-component-model/open-component-model
           - name: ocm.lioramilbaum.github.com/sha256sum-linux-arm64
             value: "ca7676288993af5fe71593d5747deec44bcacf99bb3d2fde04754433bca12b69"
         extraIdentity:
