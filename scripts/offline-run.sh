@@ -61,8 +61,8 @@ version="$(jq -er '.version' "$work/metadata.json")"
 [[ "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]] || die "Invalid package version"
 [[ -z "${EXPECTED_VERSION:-}" || "$version" == "$EXPECTED_VERSION" ]] || die "Unexpected package version"
 case "$os" in
-  darwin) pin=ae87ac4943e81396054367315395787fb7b71a697d946f8bb62de67bcb93e544 ;;
-  linux) pin=697e44f71ab0dbd02287c6544fa17be0c73c0a9d6e873f9a2c91fd92c9acbc86 ;;
+  darwin) pin=6edd3099ccffb513643ee5493da967d66a3d71a176273e4c92199d18c868910e ;;
+  linux) pin=ca7676288993af5fe71593d5747deec44bcacf99bb3d2fde04754433bca12b69 ;;
 esac
 actual="$(python3 - "$work/bootstrap/ocm" <<'PY'
 import hashlib, sys

@@ -28,14 +28,14 @@ components:
           mediaType: application/octet-stream
       - name: ocm
         type: executable
-        version: v0.17.0
+        version: v0.21.0
         labels:
           # When Renovate bumps the OCM CLI version, also update the sha256sum label below
           # AND OCM_BOOTSTRAP_SHA256_DARWIN_ARM64 in scripts/bootstrap.sh (enforced by test).
           - name: ocm.lioramilbaum.github.com/sha256sum-darwin-arm64
-            value: "ae87ac4943e81396054367315395787fb7b71a697d946f8bb62de67bcb93e544"
+            value: "6edd3099ccffb513643ee5493da967d66a3d71a176273e4c92199d18c868910e"
           - name: ocm.lioramilbaum.github.com/sha256sum-linux-arm64
-            value: "697e44f71ab0dbd02287c6544fa17be0c73c0a9d6e873f9a2c91fd92c9acbc86"
+            value: "ca7676288993af5fe71593d5747deec44bcacf99bb3d2fde04754433bca12b69"
         extraIdentity:
           os: ${PLATFORM_OS}
           architecture: arm64
