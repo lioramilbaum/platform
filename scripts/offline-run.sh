@@ -62,12 +62,12 @@ version="$(jq -er '.version' "$work/metadata.json")"
 [[ -z "${EXPECTED_VERSION:-}" || "$version" == "$EXPECTED_VERSION" ]] || die "Unexpected package version"
 # Pinned bootstrap OCM — Renovate manages this value.
 # shellcheck disable=SC2034
-OCM_BOOTSTRAP_VERSION="v0.21.0"
+OCM_BOOTSTRAP_VERSION="v0.22.1"
 case "$os" in
-  # renovate: datasource=github-release-attachments depName=open-component-model/open-component-model
-  darwin) pin=6edd3099ccffb513643ee5493da967d66a3d71a176273e4c92199d18c868910e ;;
-  # renovate: datasource=github-release-attachments depName=open-component-model/open-component-model
-  linux) pin=ca7676288993af5fe71593d5747deec44bcacf99bb3d2fde04754433bca12b69 ;;
+  # renovate: datasource=github-release-attachments depName=open-component-model/open-component-model arch=darwin-arm64
+  darwin) pin=3acdfa00b9eeec390413529e3fc40982521164ccf11a57d12a9cac662d1213e3 ;;
+  # renovate: datasource=github-release-attachments depName=open-component-model/open-component-model arch=linux-arm64
+  linux) pin=658de2950727006761a2f8c830c927fa6bc3cf32200d13a74e1df54c285ccd52 ;;
 esac
 actual="$(python3 - "$work/bootstrap/ocm" <<'PY'
 import hashlib, sys
