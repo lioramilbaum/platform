@@ -10,7 +10,7 @@ mkdir -p "$KIND_DIST_DIR"
 
 dest="$KIND_DIST_DIR/$KIND_DIST_FILE"
 
-# Use the pinned sha256 from the constructor
+# Use the pinned sha256 from scripts/lib.sh
 expected="$KIND_SHA256"
 [[ -n "$expected" ]] || die "No pinned checksum available (KIND_SHA256 is empty)"
 
